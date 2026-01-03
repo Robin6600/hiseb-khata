@@ -87,3 +87,44 @@ tr {
 .to-secondary {
   --tw-gradient-to: var(--secondary) var(--tw-gradient-to-position);
 }
+
+/* Mobile Specific Optimizations */
+@media (max-width: 640px) {
+  html {
+    font-size: 13px; /* Smaller base font for mobile */
+  }
+
+  /* Compact spacing for dashboard cards */
+  .grid-cols-1.md\:grid-cols-3.gap-6 {
+    gap: 1rem !important;
+  }
+
+  .p-6 {
+    padding: 1rem !important;
+  }
+
+  /* Compact transaction form */
+  form.space-y-4 > div {
+    margin-bottom: 0.75rem;
+  }
+
+  /* Compact table rows */
+  th,
+  td {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+  }
+
+  /* Smaller FAB for smaller screens */
+  #voice-fab {
+    width: 3.5rem;
+    height: 3.5rem;
+    bottom: 1.5rem;
+    right: 1.5rem;
+  }
+
+  /* Compact summary cards in reports */
+  .grid-cols-1.md\:grid-cols-3.gap-6.mb-8 {
+    margin-bottom: 1rem !important;
+  }
+}
