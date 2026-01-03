@@ -18,6 +18,9 @@ const themeIcon = document.getElementById('theme-icon');
 const voiceFab = document.getElementById('voice-fab');
 const voiceOverlay = document.getElementById('voice-overlay');
 const closeVoiceBtn = document.getElementById('close-voice');
+const stopVoiceBtn = document.getElementById('stop-voice');
+const voiceTitle = document.getElementById('voice-title');
+const processingIndicator = document.getElementById('processing-indicator');
 
 // Categories
 const incomeCategories = ['Salary', 'Freelance', 'Investments', 'Gift', 'Other'];
@@ -408,7 +411,7 @@ let recognition;
 let silenceTimer;
 if ('webkitSpeechRecognition' in window) {
     recognition = new webkitSpeechRecognition();
-    recognition.continuous = false; // Stop after first final result
+    recognition.continuous = true; // Stay active even after silence
     recognition.interimResults = true;
     recognition.lang = 'bn-BD'; // Bangla (Bangladesh)
 
@@ -420,21 +423,26 @@ if ('webkitSpeechRecognition' in window) {
     };
 
     recognition.onresult = (event) => {
-        if (isProcessingVoice) return; // Prevent double entry during processing
+        if (isProcessingVoice) return; // Prevent double entry
 
         let interimTranscript = '';
+        let finalTranscript = '';
+
         for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const transcript = event.results[i][0].transcript;
             if (event.results[i].isFinal) {
-                const transcript = event.results[i][0].transcript;
-                isProcessingVoice = true; // Lock
-                processVoiceCommand(transcript);
-                recognition.stop();
-                break;
+                finalTranscript += transcript;
+                resetSilenceTimer(); // Reset timer on final results too
             } else {
-                interimTranscript += event.results[i][0].transcript;
+                interimTranscript += transcript;
+                resetSilenceTimer(); // User is speaking, reset timer
             }
         }
-        document.getElementById('interim-transcript').innerText = interimTranscript;
+
+        const transcriptToShow = finalTranscript || interimTranscript;
+        if (transcriptToShow) {
+            document.getElementById('interim-transcript').innerText = transcriptToShow;
+        }
     };
 
     recognition.onerror = (event) => {
@@ -443,6 +451,14 @@ if ('webkitSpeechRecognition' in window) {
     };
 
     recognition.onend = () => {
+        // Only trigger processing if not already processing
+        if (!isProcessingVoice) {
+            const currentTranscript = document.getElementById('interim-transcript').innerText;
+            if (currentTranscript.trim()) {
+                isProcessingVoice = true;
+                processVoiceCommand(currentTranscript);
+            }
+        }
         clearTimeout(silenceTimer);
     };
 }
@@ -451,19 +467,29 @@ function resetSilenceTimer() {
     clearTimeout(silenceTimer);
     silenceTimer = setTimeout(() => {
         if (recognition) {
-            recognition.stop();
             const currentTranscript = document.getElementById('interim-transcript').innerText;
-            if (currentTranscript.trim()) {
+            if (currentTranscript.trim() && !isProcessingVoice) {
+                isProcessingVoice = true;
                 processVoiceCommand(currentTranscript);
+                recognition.stop();
+            } else {
+                recognition.stop();
+                stopVoiceUI();
             }
-            stopVoiceUI();
         }
-    }, 3000); // 3 seconds of silence to stop
+    }, 5000); // 5 seconds of silence to stop
 }
 
 function stopVoiceUI() {
     voiceOverlay.classList.remove('active');
-    setTimeout(() => voiceOverlay.classList.add('hidden'), 500);
+    setTimeout(() => {
+        voiceOverlay.classList.add('hidden');
+        // Reset UI state for next time
+        voiceTitle.innerText = 'Listening...';
+        processingIndicator.classList.add('hidden');
+        stopVoiceBtn.disabled = false;
+        stopVoiceBtn.classList.remove('opacity-50');
+    }, 500);
 }
 
 let lastProcessedTranscript = '';
@@ -509,10 +535,19 @@ function translateToEnglish(subject) {
 }
 
 function processVoiceCommand(text) {
-    if (!text || text.trim() === '') return;
+    if (!text || text.trim() === '') {
+        stopVoiceUI();
+        return;
+    }
+    
+    // Update UI to Processing state
+    voiceTitle.innerText = 'Analyzing...';
+    processingIndicator.classList.remove('hidden');
+    stopVoiceBtn.disabled = true;
+    stopVoiceBtn.classList.add('opacity-50');
     
     // Unlock and clear transcript for future use
-    setTimeout(() => { isProcessingVoice = false; }, 1000);
+    setTimeout(() => { isProcessingVoice = false; }, 2000);
     
     console.log('Voice Command:', text);
     
@@ -521,36 +556,47 @@ function processVoiceCommand(text) {
         '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9'
     };
     
-    let normalizedText = text.toLowerCase().replace(/[০-৯]/g, s => banglaToEnglishMap[s]);
+    // Enhanced normalization
+    let normalizedText = text.toLowerCase()
+        .replace(/[০-৯]/g, s => banglaToEnglishMap[s])
+        .replace(/[.,!?;:]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
     
     const numberMap = {
         'এক': 1, 'দুই': 2, 'তিন': 3, 'চার': 4, 'পাঁচ': 5, 'ছয়': 6, 'সাত': 7, 'আট': 8, 'নয়': 9, 'দশ': 10,
-        'বিশ': 20, 'ত্রিশ': 30, 'চল্লিশ': 40, 'পঞ্চাশ': 50
+        'বিশ': 20, 'ত্রিশ': 30, 'চল্লিশ': 40, 'পঞ্চাশ': 50, 'ষাট': 60, 'সত্তর': 70, 'আশি': 80, 'নব্বই': 90, 'একশ': 100
     };
     
     const multiplierMap = { 'হাজার': 1000, 'শ': 100, 'শো': 100, 'লাখ': 100000 };
 
     let parsedAmount = 0;
-    let digitMatch = normalizedText.match(/\d+/);
-    if (digitMatch) {
-        parsedAmount = parseInt(digitMatch[0]);
-        for (const [key, value] of Object.entries(multiplierMap)) {
-            if (normalizedText.includes(digitMatch[0] + ' ' + key) || normalizedText.includes(digitMatch[0] + key)) {
-                parsedAmount *= value;
-                break;
-            }
+    
+    const amountRegex = /(\d+)\s*(হাজার|শ|শো|লাখ)?/g;
+    let match;
+    let highestAmount = 0;
+
+    while ((match = amountRegex.exec(normalizedText)) !== null) {
+        let val = parseInt(match[1]);
+        if (match[2] && multiplierMap[match[2]]) {
+            val *= multiplierMap[match[2]];
         }
-    } else {
+        if (val > highestAmount) highestAmount = val;
+    }
+    
+    parsedAmount = highestAmount;
+
+    if (parsedAmount === 0) {
         for (const [key, value] of Object.entries(numberMap)) {
             if (normalizedText.includes(key)) {
-                parsedAmount = value;
+                let val = value;
                 for (const [mKey, mValue] of Object.entries(multiplierMap)) {
                     if (normalizedText.includes(key + ' ' + mKey) || normalizedText.includes(key + mKey)) {
-                        parsedAmount *= mValue;
+                        val *= mValue;
                         break;
                     }
                 }
-                if (parsedAmount > 0) break;
+                if (val > parsedAmount) parsedAmount = val;
             }
         }
     }
@@ -563,39 +609,33 @@ function processVoiceCommand(text) {
         parsedType = 'income';
     } else if (expenseKeywords.some(word => normalizedText.includes(word))) {
         parsedType = 'expense';
-    } else if (parsedAmount > 0) {
-        // AI Logic: Detect based on common patterns if no clear keyword
-        // Default to expense for number-only or generic statements
-        parsedType = 'expense';
-    }
+    } 
 
-    // Advanced: Isolate subject and translate
     const subject = isolateSubject(normalizedText);
     const translatedDescription = translateToEnglish(subject);
 
     let parsedCategory = 'Other';
     const catMap = {
-        'Food': ['খাবার', 'নাস্তা', 'বিরিয়ানি', 'লাঞ্চ', 'ডিনার', 'ডিম', 'দুধ', 'মাছ', 'মাংস', 'সবজি', 'বাজার'],
-        'Salary': ['বেতন', 'স্যালারি'],
-        'Rent': ['ভাড়া', 'অফিস', 'বাসা'],
-        'Utilities': ['বিদ্যুৎ', 'গ্যাস', 'पानी', 'কারেন্ট', 'ওয়াইফাই', 'ইন্টারনেট', 'মোবাইল', 'রিচার্জ', 'বিল'],
-        'Transportation': ['যাতায়াত', 'রিকশা', 'বাস', 'উবার', 'পাঠাও', 'তেল', 'পেট্রোল'],
-        'Shopping': ['শপিং', 'বাজার', 'জামা', 'জুতা', 'ঘড়ি', 'বই', 'কেনাকাটা'],
-        'Gift': ['উপহার', 'গিফট'],
-        'Freelance': ['ফ্রিল্যান্স', 'আপওয়ার্ক', 'ফাইভার'],
-        'Investments': ['ইনভেস্ট', 'শেয়ার', 'ট্রেডিং'],
-        'Health': ['মেডিসিন', 'ডাক্তার', 'হাসপাতাল', 'ঔষধ'],
-        'Entertainment': ['মুভি', 'সিনেমা', 'পার্ক', 'আড্ডা']
+        'Food': ['খাবার', 'নাস্তা', 'বিরিয়ানি', 'লাঞ্চ', 'ডিনার', 'ডিম', 'দুধ', 'মাছ', 'মাংস', 'সবজি', 'বাজার', 'রেস্টুরেন্ট', 'বার্গার', 'পিজ্জা'],
+        'Salary': ['বেতন', 'স্যালারি', 'বোনাস'],
+        'Rent': ['ভাড়া', 'অফিস', 'বাসা', 'রেন্ট'],
+        'Utilities': ['বিদ্যুৎ', 'গ্যাস', 'পানি', 'কারেন্ট', 'ওয়াইফাই', 'ইন্টারনেট', 'মোবাইল', 'রিচার্জ', 'বিল'],
+        'Transportation': ['যাতায়াত', 'রিকশা', 'বাস', 'উবার', 'পাঠাও', 'তেল', 'পেট্রোল', 'গাড়ি', 'ভাড়া'],
+        'Shopping': ['শপিং', 'বাজার', 'জামা', 'জুতা', 'ঘড়ি', 'বই', 'কেনাকাটা', 'শার্ট', 'প্যান্ট'],
+        'Gift': ['উপহার', 'গিফট', 'সালামি'],
+        'Freelance': ['ফ্রিল্যান্স', 'আপওয়ার্ক', 'ফাইভার', 'কাজ'],
+        'Investments': ['ইনভেস্ট', 'শেয়ার', 'ট্রেডিং', 'স্টক'],
+        'Health': ['মেডিসিন', 'ডাক্তার', 'হাসপাতাল', 'ঔষধ', 'মেডিকেল'],
+        'Entertainment': ['মুভি', 'সিনেমা', 'পার্ক', 'আড্ডা', 'গেম']
     };
 
-    // Score categories based on subject first, then raw text
     let topCategory = 'Other';
     let maxMatches = 0;
 
     for (const [cat, keywords] of Object.entries(catMap)) {
         let matches = 0;
         keywords.forEach(key => {
-            if (subject.includes(key)) matches += 2; // Weight subject higher
+            if (subject.includes(key)) matches += 3;
             else if (normalizedText.includes(key)) matches += 1;
         });
         if (matches > maxMatches) {
@@ -613,11 +653,9 @@ function processVoiceCommand(text) {
     }
 
     if (parsedAmount > 0) {
-        // Construct natural English description
         let finalDescription = translatedDescription || subject || parsedCategory;
         finalDescription += (parsedType === 'income' ? ' (Received)' : ' (Spent)');
 
-        // Populate form for user confirmation instead of auto-submit
         description.value = finalDescription;
         amount.value = parsedAmount;
         type.value = parsedType;
@@ -625,17 +663,15 @@ function processVoiceCommand(text) {
         category.value = parsedCategory;
         date.valueAsDate = parsedDate;
 
-        // Visual feedback and scroll to form
         form.scrollIntoView({ behavior: 'smooth' });
-        description.classList.add('ring-2', 'ring-primary');
-        setTimeout(() => description.classList.remove('ring-2', 'ring-primary'), 2000);
+        description.classList.add('ring-4', 'ring-primary/50');
+        setTimeout(() => description.classList.remove('ring-4', 'ring-primary/50'), 3000);
 
-        playBeep(); // Success feedback
-        showNotification(`Auto-filled: ${parsedAmount} for ${finalDescription}. Please review and save.`);
+        playBeep();
+        showNotification(`Success: Auto-filled ৳${parsedAmount} for ${finalDescription}`);
         stopVoiceUI();
     } else {
-        console.log("No amount detected in:", normalizedText);
-        showNotification("No amount detected. Please try again.");
+        showNotification("No amount detected. Please try stating the amount clearly.");
         stopVoiceUI();
     }
 }
@@ -658,6 +694,17 @@ voiceFab.addEventListener('click', () => {
         }
     } else {
         alert("Speech Recognition not supported in this browser.");
+    }
+});
+
+stopVoiceBtn.addEventListener('click', () => {
+    const currentTranscript = document.getElementById('interim-transcript').innerText;
+    if (recognition) recognition.stop();
+    if (currentTranscript.trim() && !isProcessingVoice) {
+        isProcessingVoice = true;
+        processVoiceCommand(currentTranscript);
+    } else {
+        stopVoiceUI();
     }
 });
 

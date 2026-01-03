@@ -425,16 +425,26 @@
           </div>
         </div>
 
-        <div class="text-center space-y-2">
-          <h3 class="text-2xl font-bold text-white tracking-tight">
-            Listening...
-          </h3>
-          <p
-            id="interim-transcript"
-            class="text-primary font-medium min-h-[1.5rem] italic"
-          ></p>
-          <p class="text-slate-300 text-sm px-4">
-            Say naturally: "৫০০ টাকা খাবারের জন্য খরচ" or "বেতন পেলাম ২০ হাজার"
+        <div class="text-center space-y-3 w-full">
+          <div id="voice-status-container" class="space-y-1">
+            <h3 id="voice-title" class="text-2xl font-bold text-white tracking-tight">
+              Listening...
+            </h3>
+            <div id="processing-indicator" class="hidden items-center justify-center gap-2 text-primary animate-pulse">
+                <i class="fa-solid fa-spinner fa-spin"></i>
+                <span class="text-sm font-semibold uppercase tracking-widest">Processing</span>
+            </div>
+          </div>
+          
+          <div class="bg-black/20 dark:bg-white/5 rounded-2xl p-4 min-h-[80px] flex items-center justify-center border border-white/5">
+            <p
+              id="interim-transcript"
+              class="text-white font-medium italic text-lg leading-relaxed text-center"
+            ></p>
+          </div>
+          
+          <p class="text-slate-400 text-xs px-4">
+            Try: "৫০০ টাকা খাবারের জন্য খরচ" or "বেতন পেলাম ২০ হাজার"
           </p>
         </div>
 
@@ -455,12 +465,22 @@
           ></div>
         </div>
 
-        <button
-          id="close-voice"
-          class="mt-4 px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full text-sm font-medium transition active:scale-95 border border-white/10"
-        >
-          Cancel
-        </button>
+        <div class="flex flex-col w-full gap-3">
+          <button
+            id="stop-voice"
+            class="w-full py-4 bg-primary hover:bg-indigo-600 text-white rounded-2xl font-bold text-lg shadow-lg shadow-primary/30 transition-all active:scale-95 flex items-center justify-center gap-3 border border-white/10"
+          >
+            <i class="fa-solid fa-stop-circle text-xl"></i>
+            Stop & Process
+          </button>
+          
+          <button
+            id="close-voice"
+            class="w-full py-3 bg-white/5 hover:bg-white/10 text-slate-300 rounded-2xl text-sm font-medium transition active:scale-95 border border-white/5"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
 
