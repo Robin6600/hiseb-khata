@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal Ledger App</title>
+    <meta name="description" content="A modern personal finance tracker to manage income and expenses.">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: '#6366f1', // Indigo 500
+                        success: '#10b981', // Emerald 500
+                        danger: '#ef4444', // Red 500
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body
+    class="bg-gray-50 text-gray-800 dark:bg-slate-900 dark:text-gray-100 font-sans transition-colors duration-300 min-h-screen flex flex-col">
+
+    <!-- Navbar -->
+    <nav class="bg-white dark:bg-slate-800 shadow-md sticky top-0 z-50 transition-colors duration-300">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center relative">
+                <!-- Left: Logo Icon -->
+                <div class="flex items-center z-10">
+                    <i class="fa-solid fa-wallet text-2xl text-primary"></i>
+                </div>
+
+                <!-- Center: Title -->
+                <div class="absolute inset-0 flex justify-center items-center pointer-events-none">
+                    <span class="font-bold text-xl tracking-tight text-gray-900 dark:text-white pointer-events-auto">
+                        Personal Ledger
+                    </span>
+                </div>
+
+                <!-- Right: Buttons -->
+                <div class="flex items-center gap-2 sm:gap-4 z-10">
+                    <a href="report.html"
+                        class="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 transition text-primary"
+                        title="View Reports">
+                        <i class="fa-solid fa-chart-simple text-lg"></i>
+                    </a>
+                    <button onclick="toggleTheme()"
+                        class="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 transition">
+                        <i id="theme-icon" class="fa-solid fa-moon text-lg"></i>
+                    </button>
+                    <!-- Hide Export/Import on small mobile completely to save space for title -->
+                    <button onclick="exportData()"
+                        class="hidden md:flex items-center gap-2 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-gray-200 dark:hover:bg-slate-600 transition">
+                        <i class="fa-solid fa-download"></i> <span class="hidden lg:inline">Export</span>
+                    </button>
+                    <label for="import-file"
+                        class="hidden md:flex items-center gap-2 cursor-pointer bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-gray-200 dark:hover:bg-slate-600 transition">
+                        <i class="fa-solid fa-upload"></i> <span class="hidden lg:inline">Import</span>
+                        <input type="file" id="import-file" class="hidden" accept=".json" onchange="importData(this)">
+                    </label>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+
+        <!-- Dashboard Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- Balance Card -->
+            <div
+                class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg border-l-4 border-primary transform hover:scale-105 transition-transform duration-300">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wider">Total
+                            Balance</p>
+                        <h2 id="balance-amount" class="text-3xl font-bold mt-2 text-gray-900 dark:text-white">৳0.00</h2>
+                    </div>
+                    <div class="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-full">
+                        <i class="fa-solid fa-scale-balanced text-primary text-xl"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Income Card -->
+            <div
+                class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg border-l-4 border-success transform hover:scale-105 transition-transform duration-300">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wider">Total
+                            Income</p>
+                        <h2 id="income-amount" class="text-3xl font-bold mt-2 text-success">+৳0.00</h2>
+                    </div>
+                    <div class="p-3 bg-emerald-50 dark:bg-emerald-900/30 rounded-full">
+                        <i class="fa-solid fa-arrow-trend-up text-success text-xl"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Expense Card -->
+            <div
+                class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg border-l-4 border-danger transform hover:scale-105 transition-transform duration-300">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wider">Total
+                            Expense</p>
+                        <h2 id="expense-amount" class="text-3xl font-bold mt-2 text-danger">-৳0.00</h2>
+                    </div>
+                    <div class="p-3 bg-red-50 dark:bg-red-900/30 rounded-full">
+                        <i class="fa-solid fa-arrow-trend-down text-danger text-xl"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Left Column: Form & Charts -->
+            <div class="lg:col-span-1 space-y-8">
+                <!-- Add Transaction Form -->
+                <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6">
+                    <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-circle-plus text-primary"></i> Add Transaction
+                    </h3>
+                    <form id="transaction-form" class="space-y-4">
+                        <!-- Hidden ID field for Editing -->
+                        <input type="hidden" id="transaction-id">
+
+                        <div>
+                            <label class="block text-sm font-medium mb-1 dark:text-gray-300">Description</label>
+                            <input type="text" id="description" placeholder="e.g. Salary, Groceries"
+                                class="w-full px-4 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary transition"
+                                required>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium mb-1 dark:text-gray-300">Amount</label>
+                            <input type="number" id="amount" placeholder="0.00" min="0.01" step="0.01"
+                                class="w-full px-4 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary transition"
+                                required>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium mb-1 dark:text-gray-300">Type</label>
+                                <select id="type" onchange="updateCategories()"
+                                    class="w-full px-4 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary transition">
+                                    <option value="income">Income</option>
+                                    <option value="expense">Expense</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1 dark:text-gray-300">Date</label>
+                                <input type="date" id="date"
+                                    class="w-full px-4 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary transition">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium mb-1 dark:text-gray-300">Category</label>
+                            <select id="category"
+                                class="w-full px-4 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary transition">
+                                <!-- Categories populated by JS -->
+                            </select>
+                        </div>
+
+                        <button type="submit" id="submit-btn"
+                            class="w-full bg-primary hover:bg-indigo-600 text-white font-bold py-2.5 rounded-lg shadow-md hover:shadow-lg transform transition-all active:scale-95 flex justify-center items-center gap-2">
+                            <i class="fa-solid fa-plus"></i> Add Transaction
+                        </button>
+                        <button type="button" id="cancel-edit-btn" onclick="resetForm()"
+                            class="hidden w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2.5 rounded-lg shadow-md hover:shadow-lg transform transition-all active:scale-95 justify-center items-center gap-2">
+                            <i class="fa-solid fa-xmark"></i> Cancel Edit
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Chart Section -->
+                <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6">
+                    <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-pie text-primary"></i> Expenses Structure
+                    </h3>
+                    <div class="relative h-64 w-full">
+                        <canvas id="expenseChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: List -->
+            <div class="lg:col-span-2">
+                <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 min-h-[600px]">
+                    <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                        <h3 class="text-lg font-bold flex items-center gap-2">
+                            <i class="fa-solid fa-list text-primary"></i> Recent Transactions
+                        </h3>
+                        <div class="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+                            <!-- Search -->
+                            <div class="relative">
+                                <i class="fa-solid fa-search absolute left-3 top-3 text-gray-400 text-sm"></i>
+                                <input type="text" id="search-input" onkeyup="filterTransactions()"
+                                    placeholder="Search transactions..."
+                                    class="pl-9 pr-4 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary text-sm w-full md:w-48 transition">
+                            </div>
+                            <!-- Filter -->
+                            <div class="relative">
+                                <i class="fa-solid fa-filter absolute left-3 top-3 text-gray-400 text-sm"></i>
+                                <select id="filter-type" onchange="filterTransactions()"
+                                    class="pl-9 pr-4 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary text-sm w-full md:w-40 transition appearance-none cursor-pointer">
+                                    <option value="all">All</option>
+                                    <option value="income">Income Only</option>
+                                    <option value="expense">Expense Only</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- List container -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr
+                                    class="text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-slate-700">
+                                    <th class="py-3 px-2">Description</th>
+                                    <th class="py-3 px-2">Category</th>
+                                    <th class="py-3 px-2">Date</th>
+                                    <th class="py-3 px-2 text-right">Amount</th>
+                                    <th class="py-3 px-2 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="transaction-list" class="text-sm">
+                                <!-- Transactions injected here -->
+                                <tr class="text-center text-gray-400 py-8">
+                                    <td colspan="5" class="py-8">No transactions found. Start adding some!</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white dark:bg-slate-800 border-t border-gray-200 dark:border-slate-700 py-6 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 text-center">
+            <p class="text-gray-600 dark:text-gray-400 font-medium">
+                Designed & Developed with <i class="fa-solid fa-heart text-red-500 animate-pulse"></i> by <span
+                    class="text-primary font-bold">Sheikh Rasel Robin</span>
+            </p>
+            <p class="text-xs text-gray-400 mt-2">© 2026 Personal Ledger App. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- Floating Voice Assistant Button -->
+    <button id="voice-fab"
+        class="fixed bottom-8 right-8 w-16 h-16 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all duration-300 z-[100] group">
+        <i class="fa-solid fa-microphone text-2xl group-hover:animate-pulse"></i>
+        <!-- Ripple Effect -->
+        <span class="absolute inset-0 rounded-full bg-primary/40 animate-ping"></span>
+    </button>
+
+    <!-- Voice Assistant Overlay -->
+    <div id="voice-overlay"
+        class="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-[200] hidden items-center justify-center transition-all duration-500 opacity-0">
+        <div
+            class="bg-white/10 dark:bg-slate-800/20 backdrop-blur-xl border border-white/20 dark:border-slate-700/30 p-10 rounded-[3rem] shadow-2xl flex flex-col items-center gap-8 max-w-sm w-full mx-4 transform scale-90 transition-all duration-500"
+            id="voice-card">
+            
+            <div class="relative">
+                <!-- Pulse Rings -->
+                <div class="absolute inset-0 bg-primary/20 rounded-full animate-ping scale-150"></div>
+                <div class="absolute inset-0 bg-primary/30 rounded-full animate-ping scale-125 delay-75"></div>
+                
+                <div class="w-24 h-24 bg-gradient-to-tr from-primary to-secondary rounded-full flex items-center justify-center relative z-10 shadow-lg shadow-primary/40">
+                    <i class="fa-solid fa-microphone text-4xl text-white"></i>
+                </div>
+            </div>
+
+            <div class="text-center space-y-2">
+                <h3 class="text-2xl font-bold text-white tracking-tight">Listening...</h3>
+                <p class="text-slate-300 text-sm">Say something like: "৫০০ টাকা খাবারের জন্য খরচ করলাম আজ"</p>
+            </div>
+
+            <!-- Wave Animation -->
+            <div class="flex items-end gap-1.5 h-12" id="wave-container">
+                <div class="w-1.5 bg-primary/60 rounded-full animate-wave h-4"></div>
+                <div class="w-1.5 bg-primary/80 rounded-full animate-wave h-8 delay-75"></div>
+                <div class="w-1.5 bg-primary rounded-full animate-wave h-12 delay-150"></div>
+                <div class="w-1.5 bg-primary/80 rounded-full animate-wave h-6 delay-300"></div>
+                <div class="w-1.5 bg-primary/60 rounded-full animate-wave h-10 delay-450"></div>
+            </div>
+
+            <button id="close-voice"
+                class="mt-4 px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full text-sm font-medium transition active:scale-95 border border-white/10">
+                Cancel
+            </button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
