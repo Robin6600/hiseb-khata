@@ -383,9 +383,10 @@ type.addEventListener('change', updateCategories);
 // --- Voice Assistant Implementation ---
 
 let recognition;
+let silenceTimer;
 if ('webkitSpeechRecognition' in window) {
     recognition = new webkitSpeechRecognition();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'bn-BD'; // Bangla (Bangladesh)
 
@@ -393,15 +394,18 @@ if ('webkitSpeechRecognition' in window) {
         voiceOverlay.classList.remove('hidden');
         document.getElementById('interim-transcript').innerText = '';
         setTimeout(() => voiceOverlay.classList.add('active'), 10);
+        resetSilenceTimer();
     };
 
     recognition.onresult = (event) => {
+        resetSilenceTimer();
         let interimTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
             if (event.results[i].isFinal) {
                 const transcript = event.results[i][0].transcript;
                 processVoiceCommand(transcript);
-                stopVoiceUI();
+                // We don't stop immediately in continuous mode unless we want to, 
+                // but for a single transaction, stopping after a final result + silence is better.
             } else {
                 interimTranscript += event.results[i][0].transcript;
             }
@@ -411,13 +415,26 @@ if ('webkitSpeechRecognition' in window) {
 
     recognition.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
-        stopVoiceUI();
+        if (event.error !== 'no-speech') stopVoiceUI();
     };
 
     recognition.onend = () => {
-        // Automatically close UI if it stayed open
-        setTimeout(stopVoiceUI, 500);
+        clearTimeout(silenceTimer);
     };
+}
+
+function resetSilenceTimer() {
+    clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(() => {
+        if (recognition) {
+            recognition.stop();
+            const currentTranscript = document.getElementById('interim-transcript').innerText;
+            if (currentTranscript.trim()) {
+                processVoiceCommand(currentTranscript);
+            }
+            stopVoiceUI();
+        }
+    }, 3000); // 3 seconds of silence to stop
 }
 
 function stopVoiceUI() {
@@ -425,24 +442,96 @@ function stopVoiceUI() {
     setTimeout(() => voiceOverlay.classList.add('hidden'), 500);
 }
 
+let lastProcessedTranscript = '';
+
+function isolateSubject(text) {
+    // Remove numbers and multipliers
+    let clean = text.replace(/\d+/g, '').replace(/[০-৯]/g, '');
+    const noise = [
+        'হাজার', 'শ', 'শো', 'লাখ', 'টাকা', 'পয়সা', 
+        'দিলাম', 'পেলাম', 'খরচ', 'করলাম', 'জমা', 'আয়', 'বেতন', 'স্যালারি', 'রিসিভড', 'পেয়েছি', 'দিয়েছি', 'শোধ', 'পাঠালাম',
+        'জন্য', 'একটা', 'আজ', 'এখন', 'পরশু', 'গতকাল', 'কাল', 'করেছি', 'হয়েছে'
+    ];
+    
+    noise.forEach(word => {
+        const regex = new RegExp(word, 'g');
+        clean = clean.replace(regex, '');
+    });
+    
+    return clean.trim().replace(/\s+/g, ' ');
+}
+
+function translateToEnglish(subject) {
+    const dictionary = {
+        'খাবার': 'Food', 'নাস্তা': 'Breakfast', 'দুপুরের খাবার': 'Lunch', 'রাতের খাবার': 'Dinner', 'বিরিয়ানি': 'Biryani',
+        'বাজার': 'Groceries', 'সবজি': 'Vegetables', 'মাছ': 'Fish', 'মাংস': 'Meat', 'ডিম': 'Eggs', 'দুধ': 'Milk',
+        'ভাড়া': 'Rent', 'অফিস': 'Office', 'বাসা': 'Home',
+        'বিদ্যুৎ': 'Electricity Bill', 'গ্যাস': 'Gas Bill', 'পানি': 'Water Bill', 'কারেন্ট': 'Current Bill', 'ওয়াইফাই': 'WiFi Bill', 'ইন্টারনেট': 'Internet Bill',
+        'যাতায়াত': 'Transportation', 'রিকশা': 'Rickshaw', 'বাস': 'Bus Fare', 'উবার': 'Uber', 'পাঠাও': 'Pathao', 'তেল': 'Fuel', 'পেট্রোল': 'Petrol',
+        'শপিং': 'Shopping', 'জামা': 'Clothes', 'জুতা': 'Shoes', 'ঘড়ি': 'Watch', 'বই': 'Book',
+        'উপহার': 'Gift', 'গিফট': 'Gift',
+        'মেডিসিন': 'Medicine', 'ডাক্তার': 'Doctor Fee', 'হাসপাতাল': 'Hospital', 'ঔষধ': 'Medicine',
+        'মুভি': 'Movie', 'সিনেমা': 'Cinema', 'পার্ক': 'Park', 'আড্ডা': 'Hangout',
+        'মোবাইল': 'Mobile Recharge', 'রিচার্জ': 'Recharge'
+    };
+
+    // Try to find a match in the dictionary
+    for (const [bn, en] of Object.entries(dictionary)) {
+        if (subject.includes(bn)) return en;
+    }
+
+    // Capitalize first letter of subject if no translation found
+    return subject.charAt(0).toUpperCase() + subject.slice(1);
+}
+
 function processVoiceCommand(text) {
+    if (!text || text.trim() === lastProcessedTranscript) return;
+    lastProcessedTranscript = text.trim();
+    
     console.log('Voice Command:', text);
     
-    // Convert Bangla digits to English
     const banglaToEnglishMap = {
         '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4',
         '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9'
     };
     
-    let normalizedText = text.replace(/[০-৯]/g, s => banglaToEnglishMap[s]);
+    let normalizedText = text.toLowerCase().replace(/[০-৯]/g, s => banglaToEnglishMap[s]);
     
-    // Parsing Logic
-    let parsedAmount = normalizedText.match(/\d+/);
-    if (parsedAmount) parsedAmount = parseInt(parsedAmount[0]);
+    const numberMap = {
+        'এক': 1, 'দুই': 2, 'তিন': 3, 'চার': 4, 'পাঁচ': 5, 'ছয়': 6, 'সাত': 7, 'আট': 8, 'নয়': 9, 'দশ': 10,
+        'বিশ': 20, 'ত্রিশ': 30, 'চল্লিশ': 40, 'পঞ্চাশ': 50
+    };
+    
+    const multiplierMap = { 'হাজার': 1000, 'শ': 100, 'শো': 100, 'লাখ': 100000 };
 
-    let parsedType = 'expense'; // Default
-    const incomeKeywords = ['পেলাম', 'জমা', 'আয়', 'আসল', 'বেতন', 'স্যালারি', 'বকশিশ', 'উপহার', 'পাবো', 'ঢুকলো', 'ইনকাম', 'রিসিভড', 'পেয়েছি'];
-    const expenseKeywords = ['খরচ', 'দিলাম', 'গেল', 'কিনলাম', 'কেনাকাটা', 'ভাড়া', 'বিল', 'পেমেন্ট', 'ব্যয়', 'মাইনাস', 'দিয়েছি'];
+    let parsedAmount = 0;
+    let digitMatch = normalizedText.match(/\d+/);
+    if (digitMatch) {
+        parsedAmount = parseInt(digitMatch[0]);
+        for (const [key, value] of Object.entries(multiplierMap)) {
+            if (normalizedText.includes(digitMatch[0] + ' ' + key) || normalizedText.includes(digitMatch[0] + key)) {
+                parsedAmount *= value;
+                break;
+            }
+        }
+    } else {
+        for (const [key, value] of Object.entries(numberMap)) {
+            if (normalizedText.includes(key)) {
+                parsedAmount = value;
+                for (const [mKey, mValue] of Object.entries(multiplierMap)) {
+                    if (normalizedText.includes(key + ' ' + mKey) || normalizedText.includes(key + mKey)) {
+                        parsedAmount *= mValue;
+                        break;
+                    }
+                }
+                if (parsedAmount > 0) break;
+            }
+        }
+    }
+
+    let parsedType = 'expense';
+    const incomeKeywords = ['পেলাম', 'জমা', 'আয়', 'আসল', 'বেতন', 'স্যালারি', 'বকশিশ', 'উপহার', 'পাবো', 'ঢুকলো', 'ইনকাম', 'রিসিভড', 'পেয়েছি', 'লাভ'];
+    const expenseKeywords = ['খরচ', 'দিলাম', 'গেল', 'কিনলাম', 'কেনাকাটা', 'ভাড়া', 'বিল', 'পেমেন্ট', 'ব্যয়', 'মাইনাস', 'দিয়েছি', 'শোধ', 'পাঠালাম'];
 
     if (incomeKeywords.some(word => normalizedText.includes(word))) {
         parsedType = 'income';
@@ -450,37 +539,42 @@ function processVoiceCommand(text) {
         parsedType = 'expense';
     }
 
+    // Advanced: Isolate subject and translate
+    const subject = isolateSubject(normalizedText);
+    const translatedDescription = translateToEnglish(subject);
+
     let parsedCategory = 'Other';
     const catMap = {
-        'খাবার': 'Food',
-        'নাস্তা': 'Food',
-        'বেতন': 'Salary',
-        'স্যালারি': 'Salary',
-        'ভাড়া': 'Rent',
-        'বিদ্যুৎ': 'Utilities',
-        'গ্যাস': 'Utilities',
-        'পানি': 'Utilities',
-        'যাতায়াত': 'Transportation',
-        'রিকশা': 'Transportation',
-        'বাস': 'Transportation',
-        'শপিং': 'Shopping',
-        'বাজার': 'Shopping',
-        'উপহার': 'Gift',
-        'ফ্রিল্যান্স': 'Freelance',
-        'ইনভেস্ট': 'Investments',
-        'মেডিসিন': 'Health',
-        'ডাক্তার': 'Health',
-        'মুভি': 'Entertainment'
+        'Food': ['খাবার', 'নাস্তা', 'বিরিয়ানি', 'লাঞ্চ', 'ডিনার', 'ডিম', 'দুধ', 'মাছ', 'মাংস', 'সবজি', 'বাজার'],
+        'Salary': ['বেতন', 'স্যালারি'],
+        'Rent': ['ভাড়া', 'অফিস', 'বাসা'],
+        'Utilities': ['বিদ্যুৎ', 'গ্যাস', 'पानी', 'কারেন্ট', 'ওয়াইফাই', 'ইন্টারনেট', 'মোবাইল', 'রিচার্জ', 'বিল'],
+        'Transportation': ['যাতায়াত', 'রিকশা', 'বাস', 'উবার', 'পাঠাও', 'তেল', 'পেট্রোল'],
+        'Shopping': ['শপিং', 'বাজার', 'জামা', 'জুতা', 'ঘড়ি', 'বই', 'কেনাকাটা'],
+        'Gift': ['উপহার', 'গিফট'],
+        'Freelance': ['ফ্রিল্যান্স', 'আপওয়ার্ক', 'ফাইভার'],
+        'Investments': ['ইনভেস্ট', 'শেয়ার', 'ট্রেডিং'],
+        'Health': ['মেডিসিন', 'ডাক্তার', 'হাসপাতাল', 'ঔষধ'],
+        'Entertainment': ['মুভি', 'সিনেমা', 'পার্ক', 'আড্ডা']
     };
 
-    for (const [key, value] of Object.entries(catMap)) {
-        if (normalizedText.includes(key)) {
-            parsedCategory = value;
-            break;
+    // Score categories based on subject first, then raw text
+    let topCategory = 'Other';
+    let maxMatches = 0;
+
+    for (const [cat, keywords] of Object.entries(catMap)) {
+        let matches = 0;
+        keywords.forEach(key => {
+            if (subject.includes(key)) matches += 2; // Weight subject higher
+            else if (normalizedText.includes(key)) matches += 1;
+        });
+        if (matches > maxMatches) {
+            maxMatches = matches;
+            topCategory = cat;
         }
     }
+    parsedCategory = topCategory;
 
-    // Date Logic
     let parsedDate = new Date();
     if (normalizedText.includes('কাল') || normalizedText.includes('গতকাল')) {
         parsedDate.setDate(parsedDate.getDate() - 1);
@@ -488,28 +582,22 @@ function processVoiceCommand(text) {
         parsedDate.setDate(parsedDate.getDate() - 2);
     }
 
-    // Auto-fill and Add
-    if (parsedAmount) {
-        // Construct English Description based on category and type
-        let englishDescription = parsedCategory + (parsedType === 'income' ? ' (Received)' : ' (Spent)');
+    if (parsedAmount > 0) {
+        // Construct natural English description
+        let finalDescription = translatedDescription || subject || parsedCategory;
+        finalDescription += (parsedType === 'income' ? ' (Received)' : ' (Spent)');
         
-        // Try to refine description if possible (e.g. if specific item mentioned)
-        // For now, sticking to category-based for reliability as per core requirement
-        
-        description.value = englishDescription; 
+        description.value = finalDescription; 
         amount.value = parsedAmount;
         type.value = parsedType;
         updateCategories();
         category.value = parsedCategory;
         date.valueAsDate = parsedDate;
 
-        // Auto add
         document.getElementById('submit-btn').click();
-        
-        // Notification
-        showNotification(`Success: ${parsedAmount} added for ${parsedCategory}`);
+        showNotification(`Added: ${parsedAmount} for ${finalDescription}`);
     } else {
-        showNotification("Couldn't detect amount. Try again.");
+        console.log("No amount detected in:", normalizedText);
     }
 }
 
