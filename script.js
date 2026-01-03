@@ -27,6 +27,7 @@ const expenseCategories = ['Food', 'Rent', 'Utilities', 'Transportation', 'Enter
 let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
 let editMode = false;
 let myChart; // Chart instance
+let isProcessingVoice = false; // Flag to prevent double processing
 
 // Initialize App
 function init() {
@@ -382,11 +383,32 @@ type.addEventListener('change', updateCategories);
 
 // --- Voice Assistant Implementation ---
 
+function playBeep() {
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.5);
+    } catch (e) {
+        console.warn('Audio feedback failed:', e);
+    }
+}
+
 let recognition;
 let silenceTimer;
 if ('webkitSpeechRecognition' in window) {
     recognition = new webkitSpeechRecognition();
-    recognition.continuous = true;
+    recognition.continuous = false; // Stop after first final result
     recognition.interimResults = true;
     recognition.lang = 'bn-BD'; // Bangla (Bangladesh)
 
@@ -398,14 +420,16 @@ if ('webkitSpeechRecognition' in window) {
     };
 
     recognition.onresult = (event) => {
-        resetSilenceTimer();
+        if (isProcessingVoice) return; // Prevent double entry during processing
+
         let interimTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
             if (event.results[i].isFinal) {
                 const transcript = event.results[i][0].transcript;
+                isProcessingVoice = true; // Lock
                 processVoiceCommand(transcript);
-                // We don't stop immediately in continuous mode unless we want to, 
-                // but for a single transaction, stopping after a final result + silence is better.
+                recognition.stop();
+                break;
             } else {
                 interimTranscript += event.results[i][0].transcript;
             }
@@ -485,8 +509,10 @@ function translateToEnglish(subject) {
 }
 
 function processVoiceCommand(text) {
-    if (!text || text.trim() === lastProcessedTranscript) return;
-    lastProcessedTranscript = text.trim();
+    if (!text || text.trim() === '') return;
+    
+    // Unlock and clear transcript for future use
+    setTimeout(() => { isProcessingVoice = false; }, 1000);
     
     console.log('Voice Command:', text);
     
@@ -530,12 +556,16 @@ function processVoiceCommand(text) {
     }
 
     let parsedType = 'expense';
-    const incomeKeywords = ['পেলাম', 'জমা', 'আয়', 'আসল', 'বেতন', 'স্যালারি', 'বকশিশ', 'উপহার', 'পাবো', 'ঢুকলো', 'ইনকাম', 'রিসিভড', 'পেয়েছি', 'লাভ'];
-    const expenseKeywords = ['খরচ', 'দিলাম', 'গেল', 'কিনলাম', 'কেনাকাটা', 'ভাড়া', 'বিল', 'পেমেন্ট', 'ব্যয়', 'মাইনাস', 'দিয়েছি', 'শোধ', 'পাঠালাম'];
+    const incomeKeywords = ['পেলাম', 'জমা', 'আসলো', 'আয়', 'আসল', 'বেতন', 'স্যালারি', 'বোনাস', 'বকশিশ', 'উপহার', 'পাবো', 'ঢুকলো', 'ইনকাম', 'রিসিভড', 'পেয়েছি', 'লাভ', 'income', 'salary', 'bonus', 'received'];
+    const expenseKeywords = ['খরচ', 'দিলাম', 'গেল', 'কিনলাম', 'কেনাকাটা', 'ভাড়া', 'বিল', 'পেমেন্ট', 'ব্যয়', 'মাইনাস', 'দিয়েছি', 'শোধ', 'পাঠালাম', 'expense', 'spent', 'bill', 'paid', 'minus'];
 
     if (incomeKeywords.some(word => normalizedText.includes(word))) {
         parsedType = 'income';
     } else if (expenseKeywords.some(word => normalizedText.includes(word))) {
+        parsedType = 'expense';
+    } else if (parsedAmount > 0) {
+        // AI Logic: Detect based on common patterns if no clear keyword
+        // Default to expense for number-only or generic statements
         parsedType = 'expense';
     }
 
@@ -586,18 +616,27 @@ function processVoiceCommand(text) {
         // Construct natural English description
         let finalDescription = translatedDescription || subject || parsedCategory;
         finalDescription += (parsedType === 'income' ? ' (Received)' : ' (Spent)');
-        
-        description.value = finalDescription; 
+
+        // Populate form for user confirmation instead of auto-submit
+        description.value = finalDescription;
         amount.value = parsedAmount;
         type.value = parsedType;
         updateCategories();
         category.value = parsedCategory;
         date.valueAsDate = parsedDate;
 
-        document.getElementById('submit-btn').click();
-        showNotification(`Added: ${parsedAmount} for ${finalDescription}`);
+        // Visual feedback and scroll to form
+        form.scrollIntoView({ behavior: 'smooth' });
+        description.classList.add('ring-2', 'ring-primary');
+        setTimeout(() => description.classList.remove('ring-2', 'ring-primary'), 2000);
+
+        playBeep(); // Success feedback
+        showNotification(`Auto-filled: ${parsedAmount} for ${finalDescription}. Please review and save.`);
+        stopVoiceUI();
     } else {
         console.log("No amount detected in:", normalizedText);
+        showNotification("No amount detected. Please try again.");
+        stopVoiceUI();
     }
 }
 
