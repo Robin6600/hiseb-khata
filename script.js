@@ -386,18 +386,27 @@ let recognition;
 if ('webkitSpeechRecognition' in window) {
     recognition = new webkitSpeechRecognition();
     recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.lang = 'bn-BD'; // Bangla (Bangladesh)
 
     recognition.onstart = () => {
         voiceOverlay.classList.remove('hidden');
+        document.getElementById('interim-transcript').innerText = '';
         setTimeout(() => voiceOverlay.classList.add('active'), 10);
     };
 
     recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        processVoiceCommand(transcript);
-        stopVoiceUI();
+        let interimTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+                const transcript = event.results[i][0].transcript;
+                processVoiceCommand(transcript);
+                stopVoiceUI();
+            } else {
+                interimTranscript += event.results[i][0].transcript;
+            }
+        }
+        document.getElementById('interim-transcript').innerText = interimTranscript;
     };
 
     recognition.onerror = (event) => {
@@ -419,17 +428,25 @@ function stopVoiceUI() {
 function processVoiceCommand(text) {
     console.log('Voice Command:', text);
     
+    // Convert Bangla digits to English
+    const banglaToEnglishMap = {
+        '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4',
+        '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9'
+    };
+    
+    let normalizedText = text.replace(/[০-৯]/g, s => banglaToEnglishMap[s]);
+    
     // Parsing Logic
-    let parsedAmount = text.match(/\d+/);
+    let parsedAmount = normalizedText.match(/\d+/);
     if (parsedAmount) parsedAmount = parseInt(parsedAmount[0]);
 
     let parsedType = 'expense'; // Default
-    const incomeKeywords = ['পেলাম', 'জমা', 'আয়', 'আসল', 'বেতন', 'স্যালারি', 'বকশিশ', 'উপহার', 'পাবো', 'ঢুকলো', 'ইনকাম'];
-    const expenseKeywords = ['খরচ', 'দিলাম', 'গেল', 'কিনলাম', 'কেনাকাটা', 'ভাড়া', 'বিল', 'পেমেন্ট', 'ব্যয়', 'মাইনাস'];
+    const incomeKeywords = ['পেলাম', 'জমা', 'আয়', 'আসল', 'বেতন', 'স্যালারি', 'বকশিশ', 'উপহার', 'পাবো', 'ঢুকলো', 'ইনকাম', 'রিসিভড', 'পেয়েছি'];
+    const expenseKeywords = ['খরচ', 'দিলাম', 'গেল', 'কিনলাম', 'কেনাকাটা', 'ভাড়া', 'বিল', 'পেমেন্ট', 'ব্যয়', 'মাইনাস', 'দিয়েছি'];
 
-    if (incomeKeywords.some(word => text.includes(word))) {
+    if (incomeKeywords.some(word => normalizedText.includes(word))) {
         parsedType = 'income';
-    } else if (expenseKeywords.some(word => text.includes(word))) {
+    } else if (expenseKeywords.some(word => normalizedText.includes(word))) {
         parsedType = 'expense';
     }
 
@@ -441,6 +458,8 @@ function processVoiceCommand(text) {
         'স্যালারি': 'Salary',
         'ভাড়া': 'Rent',
         'বিদ্যুৎ': 'Utilities',
+        'গ্যাস': 'Utilities',
+        'পানি': 'Utilities',
         'যাতায়াত': 'Transportation',
         'রিকশা': 'Transportation',
         'বাস': 'Transportation',
@@ -448,11 +467,14 @@ function processVoiceCommand(text) {
         'বাজার': 'Shopping',
         'উপহার': 'Gift',
         'ফ্রিল্যান্স': 'Freelance',
-        'ইনভেস্ট': 'Investments'
+        'ইনভেস্ট': 'Investments',
+        'মেডিসিন': 'Health',
+        'ডাক্তার': 'Health',
+        'মুভি': 'Entertainment'
     };
 
     for (const [key, value] of Object.entries(catMap)) {
-        if (text.includes(key)) {
+        if (normalizedText.includes(key)) {
             parsedCategory = value;
             break;
         }
@@ -460,14 +482,19 @@ function processVoiceCommand(text) {
 
     // Date Logic
     let parsedDate = new Date();
-    if (text.includes('কাল') || text.includes('গতকাল')) {
+    if (normalizedText.includes('কাল') || normalizedText.includes('গতকাল')) {
         parsedDate.setDate(parsedDate.getDate() - 1);
+    } else if (normalizedText.includes('পরশু')) {
+        parsedDate.setDate(parsedDate.getDate() - 2);
     }
 
     // Auto-fill and Add
     if (parsedAmount) {
-        // Construct English Description
+        // Construct English Description based on category and type
         let englishDescription = parsedCategory + (parsedType === 'income' ? ' (Received)' : ' (Spent)');
+        
+        // Try to refine description if possible (e.g. if specific item mentioned)
+        // For now, sticking to category-based for reliability as per core requirement
         
         description.value = englishDescription; 
         amount.value = parsedAmount;
@@ -479,10 +506,10 @@ function processVoiceCommand(text) {
         // Auto add
         document.getElementById('submit-btn').click();
         
-        // Notification (optional, using browser alert or better UI)
-        showNotification(`Added: ${parsedAmount} for ${parsedCategory}`);
+        // Notification
+        showNotification(`Success: ${parsedAmount} added for ${parsedCategory}`);
     } else {
-        alert("Couldn't detect amount. Please try again.");
+        showNotification("Couldn't detect amount. Try again.");
     }
 }
 
